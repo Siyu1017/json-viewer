@@ -145,6 +145,8 @@
         }
     }
 
+    var listeners = {};
+
     class Viewer {
         constructor(json) {
             this.container = document.createElement('div');
@@ -212,10 +214,38 @@
                     appended = true;
                 }
             })
-
+            this.overview.addEventListener('pointerenter', () => {
+                this._triggerEvent('pointerChange', {
+                    type: getType(this.json),
+                    levels: [{
+                        type: getType(this.json),
+                        key: '…',
+                        item: this.overview
+                    }],
+                    value: this.json
+                })
+            })
             return this;
         }
-        _getLevel(level, parent) {
+        on(event, listener) {
+            if (!listeners[event]) {
+                listeners[event] = [];
+            }
+            listeners[event].push(listener);
+        }
+        _triggerEvent(event, details) {
+            if (listeners[event]) {
+                listeners[event].forEach(listener => {
+                    listener(details);
+                })
+            }
+        }
+        _getLevel(level, parent, parentData = {
+            levels: [],
+            type: level.type
+        }) {
+            const parentLevels = [...parentData.levels];
+
             if (getType(level) == 'array') {
                 if (isLargeArray(level)) {
                     var groups = level.length % 100 == 0 ? Math.floor(level.length / 100) : Math.floor(level.length / 100) + 1
@@ -231,14 +261,14 @@
                             item.className = 'json-viewer-item';
                             line.className = 'json-viewer-line';
                             next.className = 'json-viewer-next';
-                            line.innerHTML = `<div class="json-viewer-expand"></div><div class="json-viewer-key" data-type="large-array"></div><div class="json-viewer-value ${type}">[${i * 100} … ${99 > value.length ?  i * 100 + value.length - 1 : i * 100 + 99}]</div>`;
-    
+                            line.innerHTML = `<div class="json-viewer-expand"></div><div class="json-viewer-key" data-type="large-array"></div><div class="json-viewer-value ${type}">[${i * 100} … ${99 > value.length ? i * 100 + value.length - 1 : i * 100 + 99}]</div>`;
+
                             var temp = {};
                             Object.keys(value).forEach(key => {
                                 temp[i * 100 + +key] = value[key];
                             })
                             value = temp;
-    
+
                             line.setAttribute('data-expandable', expandable(value));
                             line.setAttribute('data-expand', expanded);
                             line.addEventListener('click', () => {
@@ -246,15 +276,26 @@
                                     expanded = !expanded;
                                     line.setAttribute('data-expand', expanded);
                                     if (append == false) {
-                                        this._getLevel(value, next);
+                                        this._getLevel(value, next, {
+                                            type: 'array',
+                                            levels: parentLevels,
+                                            item: line
+                                        });
                                         append = true;
                                     }
                                 }
                             })
+                            line.addEventListener('pointerenter', () => {
+                                this._triggerEvent('pointerChange', {
+                                    type: 'array',
+                                    levels: parentLevels,
+                                    value: value,
+                                    item: line
+                                })
+                            })
                             item.appendChild(line);
                             item.appendChild(next);
                             parent.appendChild(item);
-    
                         })();
                     }
                     return;
@@ -279,7 +320,7 @@
                 line.className = 'json-viewer-line';
                 next.className = 'json-viewer-next';
                 line.innerHTML = `<div class="json-viewer-expand"></div><div class="json-viewer-key">${key}</div><div class="json-viewer-value ${type}">${getType(this._formatValue(level[key])) == 'string' ? this._formatValue(level[key]).replaceAll("<", "&lt;").replaceAll(">", "&gt;") : this._formatValue(level[key])}</div>`;
-    
+
                 line.setAttribute('data-expandable', expandable(level[key]));
                 line.setAttribute('data-expand', expanded);
                 line.addEventListener('click', () => {
@@ -287,10 +328,28 @@
                         expanded = !expanded;
                         line.setAttribute('data-expand', expanded);
                         if (append == false) {
-                            this._getLevel(level[key], next);
+                            this._getLevel(level[key], next, {
+                                type: getType(level),
+                                levels: parentLevels.concat([{
+                                    type: getType(level[key]),
+                                    key: key,
+                                    item: line
+                                }])
+                            });
                             append = true;
                         }
                     }
+                })
+                line.addEventListener('pointerenter', () => {
+                    this._triggerEvent('pointerChange', {
+                        type: getType(level[key]),
+                        levels: parentLevels.concat([{
+                            type: getType(level[key]),
+                            key: key,
+                            item: line
+                        }]),
+                        value: level[key]
+                    })
                 })
                 item.appendChild(line);
                 item.appendChild(next);
